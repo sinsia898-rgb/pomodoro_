@@ -109,7 +109,6 @@
 <div class="container">
   <div class="header">
     <span class="header-title">Focus Timer</span>
-    <span class="phase-pill focus" id="phase-pill">집중</span>
   </div>
 
   <div class="timer-card">
@@ -120,8 +119,8 @@
         <circle class="arc" id="arc" cx="100" cy="100" r="86" stroke="#1a9e6a" stroke-dasharray="540.4" stroke-dashoffset="0"/>
       </svg>
       <div class="center-info">
-        <div class="time-display" id="display">25:00</div>
-        <div class="time-total" id="time-total">/ 25:00</div>
+        <div class="time-display" id="display">00:00</div>
+        <div class="time-total" id="time-total"></div>
       </div>
     </div>
     <div class="controls">
@@ -131,14 +130,10 @@
       <button class="ctrl ctrl-main" id="play-btn" onclick="toggleTimer()">
         <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
       </button>
-      <button class="ctrl ctrl-sm" onclick="skipSession()" title="건너뛰기">
-        <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 15,12 5,20"/><rect x="18" y="4" width="2.5" height="16" rx="1"/></svg>
+      <button class="ctrl ctrl-sm" onclick="openEndConfirm()" title="종료 및 저장">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
       </button>
     </div>
-    <button class="end-btn" id="end-btn" onclick="openEndConfirm()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-      세션 종료
-    </button>
   </div>
 
   <div class="stats-grid">
@@ -208,6 +203,7 @@ const DAY_KEY     = 'pomo-days-v1';
 
 let phase = 'focus', remaining = FOCUS_SEC, total = FOCUS_SEC;
 let running = false, ticker = null, elapsedSec = 0;
+let startTime = 0, pausedElapsed = 0;
 
 const pauseIcon = `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="4" height="16"/><rect x="15" y="4" width="4" height="16"/></svg>`;
 const playIcon  = `<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`;
@@ -383,101 +379,67 @@ function lerpColor(a, b, t) {
 }
 
 function render() {
-  const m = Math.floor(remaining / 60), s = remaining % 60;
+  const m = Math.floor(elapsedSec / 60), s = elapsedSec % 60;
   document.getElementById('display').textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
-  document.getElementById('arc').style.strokeDashoffset = CIRC * (1 - remaining / total);
 
-  const progress = 1 - remaining / total; // 0(시작) → 1(완료)
+  // 원 색상: 경과 시간 기준 (60분 기준으로 꽉 참)
+  const MAX_VIS = 60 * 60; // 60분 기준
+  const progress = Math.min(elapsedSec / MAX_VIS, 1);
+  document.getElementById('arc').style.strokeDashoffset = CIRC * (1 - progress);
 
-  if (phase === 'focus') {
-    // 투명 → 연한 민트(0%) → 중간 초록(50%) → 진한 초록(100%)
-    const from = [234, 248, 237]; // 아주 연한 초록 (거의 흰색)
-    const mid  = [167, 220, 190]; // 중간 민트
-    const to   = [26,  158, 106]; // 진한 초록
-    const color = progress < 0.5
-      ? lerpColor(from, mid, progress * 2)
-      : lerpColor(mid, to, (progress - 0.5) * 2);
-    const alpha = 0.08 + progress * 0.55; // 0.08 → 0.63
-    document.getElementById('fill-circle').setAttribute('fill', color);
-    document.getElementById('fill-circle').style.opacity = alpha;
-  } else {
-    // 휴식: 연한 파랑 → 파랑
-    const from = [230, 241, 251];
-    const to   = [42,  127, 196];
-    const color = lerpColor(from, to, progress);
-    const alpha = 0.08 + progress * 0.45;
-    document.getElementById('fill-circle').setAttribute('fill', color);
-    document.getElementById('fill-circle').style.opacity = alpha;
-  }
+  const from = [234, 248, 237];
+  const mid  = [167, 220, 190];
+  const to   = [26,  158, 106];
+  const color = progress < 0.5
+    ? lerpColor(from, mid, progress * 2)
+    : lerpColor(mid, to, (progress - 0.5) * 2);
+  const alpha = 0.05 + progress * 0.6;
+  document.getElementById('fill-circle').setAttribute('fill', color);
+  document.getElementById('fill-circle').style.opacity = alpha;
 }
 
-function setPhase(p) {
-  phase = p; elapsedSec = 0;
+function setPhase() {
+  elapsedSec = 0; startTime = 0; pausedElapsed = 0; running = false;
   document.getElementById('fill-circle').setAttribute('fill', 'transparent');
   document.getElementById('fill-circle').style.opacity = 0;
-  const pill = document.getElementById('phase-pill');
-  if (p === 'focus') {
-    total = remaining = FOCUS_SEC;
-    document.getElementById('arc').setAttribute('stroke', '#1a9e6a');
-    document.getElementById('time-total').textContent = '/ 25:00';
-    pill.textContent = '집중'; pill.className = 'phase-pill focus';
-  } else {
-    total = remaining = BREAK_SEC;
-    document.getElementById('arc').setAttribute('stroke', '#2a7fc4');
-    document.getElementById('time-total').textContent = '/ 05:00';
-    pill.textContent = '휴식'; pill.className = 'phase-pill break';
-  }
-  document.getElementById('end-btn').classList.remove('visible');
+  document.getElementById('arc').style.strokeDashoffset = CIRC;
+  document.getElementById('arc').setAttribute('stroke', '#1a9e6a');
+  document.getElementById('time-total').textContent = '';
+  document.getElementById('phase-pill').textContent = '집중';
+  document.getElementById('phase-pill').className = 'phase-pill focus';
   render();
 }
 
 function toggleTimer() {
   if (running) {
     clearInterval(ticker); running = false;
-    elapsedSec = total - remaining;
+    elapsedSec = pausedElapsed + Math.floor((Date.now() - startTime) / 1000);
     document.getElementById('play-btn').innerHTML = playIcon;
-    if (phase === 'focus') document.getElementById('end-btn').classList.add('visible');
+    document.getElementById('end-btn').classList.add('visible');
   } else {
+    startTime = Date.now();
+    pausedElapsed = elapsedSec;
     running = true;
     document.getElementById('play-btn').innerHTML = pauseIcon;
     document.getElementById('end-btn').classList.remove('visible');
     ticker = setInterval(() => {
-      if (remaining <= 0) {
-        clearInterval(ticker); running = false;
-        document.getElementById('play-btn').innerHTML = playIcon;
-        document.getElementById('end-btn').classList.remove('visible');
-        if (phase === 'focus') {
-          elapsedSec = FOCUS_SEC;
-          openEndConfirm();
-        } else {
-          showToast('휴식 끝! 다시 집중해요');
-          setTimeout(() => setPhase('focus'), 300);
-        }
-        return;
-      }
-      remaining--; render();
-    }, 1000);
+      elapsedSec = pausedElapsed + Math.floor((Date.now() - startTime) / 1000);
+      render();
+    }, 500);
   }
 }
 
 function resetTimer() {
-  clearInterval(ticker); running = false; elapsedSec = 0;
+  clearInterval(ticker);
   document.getElementById('play-btn').innerHTML = playIcon;
   document.getElementById('end-btn').classList.remove('visible');
-  setPhase(phase);
-}
-
-function skipSession() {
-  clearInterval(ticker); running = false; elapsedSec = 0;
-  document.getElementById('play-btn').innerHTML = playIcon;
-  document.getElementById('end-btn').classList.remove('visible');
-  setPhase(phase === 'focus' ? 'break' : 'focus');
+  setPhase();
 }
 
 function openEndConfirm() {
+  if (elapsedSec === 0) { showToast('아직 집중 시간이 없어요'); return; }
   const mins = Math.ceil(elapsedSec / 60);
-  document.getElementById('confirm-sub').textContent =
-    mins > 0 ? `${mins}분 집중했어요. 메모를 남겨주세요.` : '아직 집중 시간이 없어요.';
+  document.getElementById('confirm-sub').textContent = `${mins}분 집중했어요. 메모를 남겨주세요.`;
   document.getElementById('confirm-memo').value = '';
   document.getElementById('confirm-overlay').classList.add('visible');
   setTimeout(() => document.getElementById('confirm-memo').focus(), 100);
@@ -495,7 +457,32 @@ function confirmEnd() {
     showToast(`${mins}분 저장됨`);
   }
   closeConfirm();
-  setPhase('focus');
+  clearInterval(ticker);
+  document.getElementById('play-btn').innerHTML = playIcon;
+  document.getElementById('end-btn').classList.remove('visible');
+  setPhase();
+}
+
+function playAlert(type) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const notes = type === 'focus'
+      ? [523, 659, 784, 1047] // 도미솔도 — 집중 완료
+      : [523, 440];           // 두 음 — 휴식 끝
+    let t = ctx.currentTime;
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0, t + i * 0.18);
+      gain.gain.linearRampToValueAtTime(0.35, t + i * 0.18 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.18 + 0.4);
+      osc.start(t + i * 0.18);
+      osc.stop(t + i * 0.18 + 0.4);
+    });
+  } catch(e) {}
 }
 
 function showToast(msg) {
@@ -504,7 +491,7 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 2200);
 }
 
-renderAll(); render();
+renderAll(); setPhase();
 </script>
 </body>
 </html>

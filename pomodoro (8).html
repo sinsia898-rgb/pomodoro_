@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>집중 타이머</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Pretendard:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f7f7f5; --surface: #fff; --surface2: #f0f0ee;
+    --border: rgba(0,0,0,0.07); --border2: rgba(0,0,0,0.13);
+    --text: #1a1a1a; --muted: #999; --muted2: #ccc;
+    --green: #1a9e6a; --green-dim: rgba(26,158,106,0.09);
+    --blue: #2a7fc4; --blue-dim: rgba(42,127,196,0.09);
+    --red: #d94f3d;
+    --mono: 'DM Mono', monospace; --sans: 'Pretendard', sans-serif;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 2.5rem 1rem 4rem; }
+  .container { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 1.25rem; }
+
+  .header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border2); }
+  .header-title { font-size: 11px; letter-spacing: 0.18em; color: var(--muted); font-weight: 400; text-transform: uppercase; }
+  .phase-pill { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; font-weight: 500; transition: all 0.3s; }
+  .phase-pill.focus { background: var(--green-dim); color: var(--green); border: 1px solid rgba(26,158,106,0.2); }
+  .phase-pill.break { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(42,127,196,0.18); }
+
+  .timer-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 2rem 1.5rem 1.75rem; display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
+  .circle-wrap { position: relative; width: 200px; height: 200px; }
+  svg.ring { transform: rotate(-90deg); width: 200px; height: 200px; }
+  .track { fill: none; stroke: #ebebeb; stroke-width: 5; }
+  .arc { fill: none; stroke-width: 5; stroke-linecap: round; transition: stroke-dashoffset 1s linear, stroke 0.4s; }
+  .center-info { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+  .time-display { font-family: var(--mono); font-size: 50px; font-weight: 300; letter-spacing: -2px; color: var(--text); line-height: 1; }
+  .time-total { font-family: var(--mono); font-size: 11px; color: var(--muted); font-weight: 300; }
+
+  .controls { display: flex; align-items: center; gap: 10px; }
+  .ctrl { background: transparent; border: 1px solid var(--border2); color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: all 0.15s; }
+  .ctrl:hover { border-color: rgba(0,0,0,0.22); color: var(--text); background: var(--surface2); }
+  .ctrl-sm { width: 38px; height: 38px; font-size: 14px; }
+  .ctrl-main { width: 56px; height: 56px; font-size: 20px; color: var(--text); border-color: rgba(0,0,0,0.18); }
+  .ctrl svg { width: 1em; height: 1em; }
+  .end-btn { display: none; align-items: center; gap: 6px; background: transparent; border: 1px solid rgba(217,79,61,0.25); border-radius: 8px; color: var(--red); cursor: pointer; font-family: var(--sans); font-size: 12px; padding: 6px 14px; transition: all 0.15s; }
+  .end-btn:hover { background: rgba(217,79,61,0.06); border-color: rgba(217,79,61,0.4); }
+  .end-btn.visible { display: flex; }
+  .end-btn svg { width: 13px; height: 13px; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 10px; display: flex; flex-direction: column; gap: 5px; }
+  .stat-label { font-size: 10px; color: var(--muted); letter-spacing: 0.04em; line-height: 1.3; }
+  .stat-val { font-family: var(--mono); font-size: 24px; font-weight: 400; color: var(--text); line-height: 1; }
+  .stat-unit { font-size: 10px; color: var(--muted); }
+
+  /* 세션 로그 */
+  .section-title { font-size: 11px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+  .section-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .section-header { padding: 11px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .clear-btn { font-size: 10px; color: var(--muted2); background: none; border: none; cursor: pointer; font-family: var(--sans); transition: color 0.15s; }
+  .clear-btn:hover { color: var(--muted); }
+
+  .session-list { display: flex; flex-direction: column; }
+  .session-row { display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--border); }
+  .session-row:last-child { border-bottom: none; }
+  .session-num { font-family: var(--mono); font-size: 10px; color: var(--muted2); width: 18px; flex-shrink: 0; text-align: right; }
+  .session-time { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 40px; flex-shrink: 0; }
+  .session-mins { font-family: var(--mono); font-size: 12px; color: var(--green); width: 32px; flex-shrink: 0; }
+  .session-memo { font-size: 11px; color: var(--text); flex: 1; font-style: italic; }
+  .session-del { background: none; border: none; cursor: pointer; color: var(--muted2); font-size: 14px; padding: 0 2px; transition: color 0.15s; line-height: 1; }
+  .session-del:hover { color: var(--red); }
+
+  /* 일별 누적 */
+  .day-list { display: flex; flex-direction: column; }
+  .day-row { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+  .day-row:last-child { border-bottom: none; }
+  .day-top { display: flex; align-items: center; gap: 10px; }
+  .day-date { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 38px; flex-shrink: 0; }
+  .day-bar-bg { flex: 1; height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .day-bar-fill { height: 100%; border-radius: 3px; background: var(--green); transition: width 0.5s cubic-bezier(0.4,0,0.2,1); }
+  .day-bar-fill.today { box-shadow: 0 0 4px rgba(26,158,106,0.3); }
+  .day-info { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 50px; text-align: right; flex-shrink: 0; }
+
+  .empty-msg { font-size: 12px; color: var(--muted2); text-align: center; padding: 20px; }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(8px); background: var(--text); border-radius: 8px; padding: 8px 18px; font-size: 12px; color: #fff; opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s; white-space: nowrap; z-index: 100; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .month-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .month-tab { font-size: 11px; font-family: var(--sans); background: none; border: none; border-bottom: 2px solid transparent; padding: 7px 14px; cursor: pointer; color: var(--muted); white-space: nowrap; transition: all 0.15s; margin-bottom: -1px; }
+  .month-tab:hover { color: var(--text); }
+  .month-tab.active { color: var(--green); border-bottom-color: var(--green); font-weight: 500; }
+  .day-empty .day-date, .day-empty .day-info { opacity: 0.35; }
+  .day-empty .day-bar-bg { opacity: 0.4; }
+
+  .confirm-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.18); align-items: center; justify-content: center; z-index: 200; }
+  .confirm-overlay.visible { display: flex; }
+  .confirm-box { background: var(--surface); border: 1px solid var(--border2); border-radius: 14px; padding: 1.5rem; width: 300px; display: flex; flex-direction: column; gap: 1rem; }
+  .confirm-title { font-size: 14px; font-weight: 500; color: var(--text); }
+  .confirm-sub { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .confirm-input { width: 100%; font-size: 12px; font-family: var(--sans); border: 1px solid var(--border2); border-radius: 8px; padding: 8px 10px; outline: none; color: var(--text); background: var(--surface); }
+  .confirm-input:focus { border-color: rgba(0,0,0,0.25); }
+  .confirm-input::placeholder { color: var(--muted2); }
+  .confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .btn-cancel { font-size: 12px; font-family: var(--sans); background: transparent; border: 1px solid var(--border2); border-radius: 7px; padding: 7px 14px; cursor: pointer; color: var(--muted); transition: all 0.15s; }
+  .btn-cancel:hover { color: var(--text); background: var(--surface2); }
+  .btn-confirm { font-size: 12px; font-family: var(--sans); background: var(--red); border: none; border-radius: 7px; padding: 7px 14px; cursor: pointer; color: #fff; transition: opacity 0.15s; }
+  .btn-confirm:hover { opacity: 0.88; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <span class="header-title">Focus Timer</span>
+    <span class="phase-pill focus" id="phase-pill">집중</span>
+  </div>
+
+  <div class="timer-card">
+    <div class="circle-wrap">
+      <svg class="ring" viewBox="0 0 200 200">
+        <circle id="fill-circle" cx="100" cy="100" r="83" fill="transparent" style="transition: fill 1s linear;"/>
+        <circle class="track" cx="100" cy="100" r="86"/>
+        <circle class="arc" id="arc" cx="100" cy="100" r="86" stroke="#1a9e6a" stroke-dasharray="540.4" stroke-dashoffset="0"/>
+      </svg>
+      <div class="center-info">
+        <div class="time-display" id="display">25:00</div>
+        <div class="time-total" id="time-total">/ 25:00</div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="ctrl ctrl-sm" onclick="resetTimer()" title="초기화">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      </button>
+      <button class="ctrl ctrl-main" id="play-btn" onclick="toggleTimer()">
+        <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+      </button>
+      <button class="ctrl ctrl-sm" onclick="skipSession()" title="건너뛰기">
+        <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 15,12 5,20"/><rect x="18" y="4" width="2.5" height="16" rx="1"/></svg>
+      </button>
+    </div>
+    <button class="end-btn" id="end-btn" onclick="openEndConfirm()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+      세션 종료
+    </button>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-box">
+      <div class="stat-label">오늘 세션</div>
+      <div><span class="stat-val" id="today-count">0</span> <span class="stat-unit">회</span></div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">오늘 집중</div>
+      <div><span class="stat-val" id="today-mins">0</span> <span class="stat-unit">분</span></div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">누적 집중</div>
+      <div><span class="stat-val" id="total-mins">0</span> <span class="stat-unit">분</span></div>
+    </div>
+  </div>
+
+  <!-- 세션 로그 -->
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">오늘 세션 기록</span>
+      <button class="clear-btn" onclick="clearTodaySessions()">오늘 초기화</button>
+    </div>
+    <div class="session-list" id="session-list">
+      <div class="empty-msg">종료한 세션이 없어요</div>
+    </div>
+  </div>
+
+  <!-- 일별 누적 -->
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">일별 누적</span>
+      <button class="clear-btn" onclick="clearAllHistory()">전체 초기화</button>
+    </div>
+    <div class="month-tabs" id="month-tabs"></div>
+    <div class="day-list" id="day-list">
+      <div class="empty-msg">아직 기록이 없어요</div>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-box">
+    <div class="confirm-title">세션을 종료할까요?</div>
+    <div class="confirm-sub" id="confirm-sub"></div>
+    <input class="confirm-input" id="confirm-memo" type="text" placeholder="메모 (예: 시세 분석, 광고 소재)" maxlength="40">
+    <div class="confirm-actions">
+      <button class="btn-cancel" onclick="closeConfirm()">취소</button>
+      <button class="btn-confirm" onclick="confirmEnd()">저장</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/*
+  저장 구조
+  SESSION_KEY: [{ date:"2025-06-03", time:"14:32", mins:25, memo:"시세 분석" }, ...]
+  DAY_KEY:     { "2025-06-03": 80, "2025-06-02": 125, ... }  (일별 누적 분)
+*/
+const CIRC = 2 * Math.PI * 86;
+const FOCUS_SEC = 25 * 60;
+const BREAK_SEC = 5 * 60;
+const SESSION_KEY = 'pomo-sessions-v1';
+const DAY_KEY     = 'pomo-days-v1';
+
+let phase = 'focus', remaining = FOCUS_SEC, total = FOCUS_SEC;
+let running = false, ticker = null, elapsedSec = 0;
+
+const pauseIcon = `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="4" height="16"/><rect x="15" y="4" width="4" height="16"/></svg>`;
+const playIcon  = `<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`;
+
+function todayKey() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function nowTime() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+
+function loadSessions() { try { return JSON.parse(localStorage.getItem(SESSION_KEY)) || []; } catch { return []; } }
+function saveSessions(s) { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
+function loadDays()     { try { return JSON.parse(localStorage.getItem(DAY_KEY)) || {}; } catch { return {}; } }
+function saveDays(d)    { localStorage.setItem(DAY_KEY, JSON.stringify(d)); }
+
+function addSession(mins, memo) {
+  // 1. 세션 로그에 추가
+  const sessions = loadSessions();
+  sessions.push({ date: todayKey(), time: nowTime(), mins, memo: memo || '' });
+  saveSessions(sessions);
+
+  // 2. 일별 누적에 합산
+  const days = loadDays();
+  days[todayKey()] = (days[todayKey()] || 0) + mins;
+  saveDays(days);
+
+  renderAll();
+}
+
+function deleteSession(idx) {
+  const sessions = loadSessions();
+  const s = sessions[idx];
+  if (!s) return;
+  // 일별 누적에서 차감
+  const days = loadDays();
+  days[s.date] = Math.max(0, (days[s.date] || 0) - s.mins);
+  if (days[s.date] === 0) delete days[s.date];
+  saveDays(days);
+  sessions.splice(idx, 1);
+  saveSessions(sessions);
+  renderAll();
+}
+
+function clearTodaySessions() {
+  if (!confirm('오늘 세션 기록을 삭제할까요?')) return;
+  const key = todayKey();
+  const sessions = loadSessions().filter(s => s.date !== key);
+  saveSessions(sessions);
+  const days = loadDays();
+  delete days[key];
+  saveDays(days);
+  renderAll();
+}
+
+function clearAllHistory() {
+  if (!confirm('전체 기록을 삭제할까요?')) return;
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(DAY_KEY);
+  renderAll();
+}
+
+function renderAll() {
+  renderStats();
+  renderSessionLog();
+  renderDayHistory();
+}
+
+function renderStats() {
+  const sessions = loadSessions();
+  const key = todayKey();
+  const todaySessions = sessions.filter(s => s.date === key);
+  const todayMins = todaySessions.reduce((a, s) => a + s.mins, 0);
+  document.getElementById('today-count').textContent = todaySessions.length;
+  document.getElementById('today-mins').textContent  = todayMins;
+
+  const days = loadDays();
+  const totalMins = Object.values(days).reduce((a, v) => a + v, 0);
+  document.getElementById('total-mins').textContent = totalMins;
+}
+
+function renderSessionLog() {
+  const sessions = loadSessions();
+  const key = todayKey();
+  const todaySessions = sessions
+    .map((s, i) => ({ ...s, origIdx: i }))
+    .filter(s => s.date === key);
+
+  const el = document.getElementById('session-list');
+  if (todaySessions.length === 0) {
+    el.innerHTML = '<div class="empty-msg">종료한 세션이 없어요</div>';
+    return;
+  }
+  el.innerHTML = todaySessions.map((s, n) => `
+    <div class="session-row">
+      <span class="session-num">${n + 1}</span>
+      <span class="session-time">${s.time}</span>
+      <span class="session-mins">${s.mins}분</span>
+      <span class="session-memo">${s.memo ? s.memo.replace(/</g,'&lt;') : '—'}</span>
+      <button class="session-del" onclick="deleteSession(${s.origIdx})" title="삭제">×</button>
+    </div>`).join('');
+}
+
+let activeMonth = null; // "2025-06" 형식
+
+function renderDayHistory() {
+  const days = loadDays();
+  const today = new Date();
+  const todayKey2 = todayKey();
+
+  // 기록 있는 월 목록 추출 (최신순)
+  const monthSet = new Set();
+  Object.keys(days).forEach(k => { if (days[k] > 0) monthSet.add(k.slice(0, 7)); });
+  // 현재 월은 기록 없어도 항상 포함
+  const thisMonth = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0');
+  monthSet.add(thisMonth);
+  const months = Array.from(monthSet).sort().reverse(); // 최신 먼저
+
+  // activeMonth 초기화 또는 유효성 보정
+  if (!activeMonth || !months.includes(activeMonth)) activeMonth = months[0];
+
+  // 탭 렌더
+  const tabEl = document.getElementById('month-tabs');
+  tabEl.innerHTML = months.map(m => {
+    const [y, mo] = m.split('-');
+    const label = y + '년 ' + parseInt(mo) + '월';
+    return `<button class="month-tab ${m === activeMonth ? 'active' : ''}" onclick="setActiveMonth('${m}')">${label}</button>`;
+  }).join('');
+
+  // 선택된 월 전체 날짜 (1일~말일, 최신순)
+  const [ay, am] = activeMonth.split('-').map(Number);
+  const daysInMonth = new Date(ay, am, 0).getDate();
+  const rows = [];
+  for (let d = daysInMonth; d >= 1; d--) {
+    const k = ay + '-' + String(am).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    const mins = days[k] || 0;
+    // 미래 날짜 스킵
+    if (new Date(k) > today) continue;
+    const isToday = k === todayKey2;
+    const label = isToday ? '오늘' : am + '/' + d;
+    rows.push({ k, label, mins, isToday, empty: mins === 0 });
+  }
+
+  const el = document.getElementById('day-list');
+  if (rows.length === 0) { el.innerHTML = '<div class="empty-msg">이 달 기록이 없어요</div>'; return; }
+
+  const maxMins = Math.max(...rows.map(r => r.mins), 1);
+  el.innerHTML = rows.map(r => `
+    <div class="day-row${r.empty ? ' day-empty' : ''}">
+      <div class="day-top">
+        <div class="day-date">${r.label}</div>
+        <div class="day-bar-bg">
+          <div class="day-bar-fill ${r.isToday ? 'today' : ''}" style="width:${r.mins > 0 ? Math.round(r.mins / maxMins * 100) : 0}%"></div>
+        </div>
+        <div class="day-info">${r.mins > 0 ? r.mins + '분' : '—'}</div>
+      </div>
+    </div>`).join('');
+}
+
+function setActiveMonth(m) {
+  activeMonth = m;
+  renderDayHistory();
+}
+
+function lerpColor(a, b, t) {
+  // a, b: [r,g,b], t: 0~1
+  const r = Math.round(a[0] + (b[0]-a[0]) * t);
+  const g = Math.round(a[1] + (b[1]-a[1]) * t);
+  const b2 = Math.round(a[2] + (b[2]-a[2]) * t);
+  return `rgb(${r},${g},${b2})`;
+}
+
+function render() {
+  const m = Math.floor(remaining / 60), s = remaining % 60;
+  document.getElementById('display').textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  document.getElementById('arc').style.strokeDashoffset = CIRC * (1 - remaining / total);
+
+  const progress = 1 - remaining / total; // 0(시작) → 1(완료)
+
+  if (phase === 'focus') {
+    // 투명 → 연한 민트(0%) → 중간 초록(50%) → 진한 초록(100%)
+    const from = [234, 248, 237]; // 아주 연한 초록 (거의 흰색)
+    const mid  = [167, 220, 190]; // 중간 민트
+    const to   = [26,  158, 106]; // 진한 초록
+    const color = progress < 0.5
+      ? lerpColor(from, mid, progress * 2)
+      : lerpColor(mid, to, (progress - 0.5) * 2);
+    const alpha = 0.08 + progress * 0.55; // 0.08 → 0.63
+    document.getElementById('fill-circle').setAttribute('fill', color);
+    document.getElementById('fill-circle').style.opacity = alpha;
+  } else {
+    // 휴식: 연한 파랑 → 파랑
+    const from = [230, 241, 251];
+    const to   = [42,  127, 196];
+    const color = lerpColor(from, to, progress);
+    const alpha = 0.08 + progress * 0.45;
+    document.getElementById('fill-circle').setAttribute('fill', color);
+    document.getElementById('fill-circle').style.opacity = alpha;
+  }
+}
+
+function setPhase(p) {
+  phase = p; elapsedSec = 0;
+  document.getElementById('fill-circle').setAttribute('fill', 'transparent');
+  document.getElementById('fill-circle').style.opacity = 0;
+  const pill = document.getElementById('phase-pill');
+  if (p === 'focus') {
+    total = remaining = FOCUS_SEC;
+    document.getElementById('arc').setAttribute('stroke', '#1a9e6a');
+    document.getElementById('time-total').textContent = '/ 25:00';
+    pill.textContent = '집중'; pill.className = 'phase-pill focus';
+  } else {
+    total = remaining = BREAK_SEC;
+    document.getElementById('arc').setAttribute('stroke', '#2a7fc4');
+    document.getElementById('time-total').textContent = '/ 05:00';
+    pill.textContent = '휴식'; pill.className = 'phase-pill break';
+  }
+  document.getElementById('end-btn').classList.remove('visible');
+  render();
+}
+
+function toggleTimer() {
+  if (running) {
+    clearInterval(ticker); running = false;
+    elapsedSec = total - remaining;
+    document.getElementById('play-btn').innerHTML = playIcon;
+    if (phase === 'focus') document.getElementById('end-btn').classList.add('visible');
+  } else {
+    running = true;
+    document.getElementById('play-btn').innerHTML = pauseIcon;
+    document.getElementById('end-btn').classList.remove('visible');
+    ticker = setInterval(() => {
+      if (remaining <= 0) {
+        clearInterval(ticker); running = false;
+        document.getElementById('play-btn').innerHTML = playIcon;
+        document.getElementById('end-btn').classList.remove('visible');
+        if (phase === 'focus') {
+          elapsedSec = FOCUS_SEC;
+          openEndConfirm();
+        } else {
+          showToast('휴식 끝! 다시 집중해요');
+          setTimeout(() => setPhase('focus'), 300);
+        }
+        return;
+      }
+      remaining--; render();
+    }, 1000);
+  }
+}
+
+function resetTimer() {
+  clearInterval(ticker); running = false; elapsedSec = 0;
+  document.getElementById('play-btn').innerHTML = playIcon;
+  document.getElementById('end-btn').classList.remove('visible');
+  setPhase(phase);
+}
+
+function skipSession() {
+  clearInterval(ticker); running = false; elapsedSec = 0;
+  document.getElementById('play-btn').innerHTML = playIcon;
+  document.getElementById('end-btn').classList.remove('visible');
+  setPhase(phase === 'focus' ? 'break' : 'focus');
+}
+
+function openEndConfirm() {
+  const mins = Math.ceil(elapsedSec / 60);
+  document.getElementById('confirm-sub').textContent =
+    mins > 0 ? `${mins}분 집중했어요. 메모를 남겨주세요.` : '아직 집중 시간이 없어요.';
+  document.getElementById('confirm-memo').value = '';
+  document.getElementById('confirm-overlay').classList.add('visible');
+  setTimeout(() => document.getElementById('confirm-memo').focus(), 100);
+}
+
+function closeConfirm() {
+  document.getElementById('confirm-overlay').classList.remove('visible');
+}
+
+function confirmEnd() {
+  const mins = Math.ceil(elapsedSec / 60);
+  const memo = document.getElementById('confirm-memo').value.trim();
+  if (mins > 0) {
+    addSession(mins, memo);
+    showToast(`${mins}분 저장됨`);
+  }
+  closeConfirm();
+  setPhase('focus');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+renderAll(); render();
+</script>
+</body>
+</html>

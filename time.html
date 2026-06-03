@@ -405,8 +405,6 @@ function setPhase() {
   document.getElementById('arc').style.strokeDashoffset = CIRC;
   document.getElementById('arc').setAttribute('stroke', '#1a9e6a');
   document.getElementById('time-total').textContent = '';
-  document.getElementById('phase-pill').textContent = '집중';
-  document.getElementById('phase-pill').className = 'phase-pill focus';
   render();
 }
 
@@ -415,13 +413,11 @@ function toggleTimer() {
     clearInterval(ticker); running = false;
     elapsedSec = pausedElapsed + Math.floor((Date.now() - startTime) / 1000);
     document.getElementById('play-btn').innerHTML = playIcon;
-    document.getElementById('end-btn').classList.add('visible');
   } else {
     startTime = Date.now();
     pausedElapsed = elapsedSec;
     running = true;
     document.getElementById('play-btn').innerHTML = pauseIcon;
-    document.getElementById('end-btn').classList.remove('visible');
     ticker = setInterval(() => {
       elapsedSec = pausedElapsed + Math.floor((Date.now() - startTime) / 1000);
       render();
@@ -432,7 +428,6 @@ function toggleTimer() {
 function resetTimer() {
   clearInterval(ticker);
   document.getElementById('play-btn').innerHTML = playIcon;
-  document.getElementById('end-btn').classList.remove('visible');
   setPhase();
 }
 
@@ -459,7 +454,6 @@ function confirmEnd() {
   closeConfirm();
   clearInterval(ticker);
   document.getElementById('play-btn').innerHTML = playIcon;
-  document.getElementById('end-btn').classList.remove('visible');
   setPhase();
 }
 
